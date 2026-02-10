@@ -12,8 +12,7 @@
  * Result: Main + Shared DO NOT share projects/recordings anymore.
  */
 
-const APP_VERSION = "v20260210_5"; // bump so you can confirm update is live
-
+const APP_VERSION = "v20260210_4";
 const need = (id) => document.getElementById(id);
 const els = {
   exportBtn: need("exportBtn"),
@@ -121,7 +120,57 @@ function clampInt(v,min,max){
   if(Number.isNaN(v)) return min;
   return Math.max(min, Math.min(max, v));
 }
+// ---------- active typing target (for rhyme insert) ----------
+let lastTypingTarget = null;
 
+function isTextTarget(el){
+  return !!el && el.tagName === "TEXTAREA";
+}
+function setLastTypingTarget(el){
+  if(isTextTarget(el)) lastTypingTarget = el;
+}
+
+// Track the last textarea you touched anywhere in the app
+document.addEventListener("focusin", (e)=>{
+  if(isTextTarget(e.target)) setLastTypingTarget(e.target);
+});
+
+// ---------- headshot eye blink ----------
+let eyePulseTimer = null;
+
+function headerIsVisibleForEyes(){
+  // only blink when upper section is NOT hidden
+  return !document.body.classList.contains("headerCollapsed");
+}
+
+function flashEyes(){
+  if(!headerIsVisibleForEyes()) return;
+  const eyeL = document.getElementById("eyeL");
+  const eyeR = document.getElementById("eyeR");
+  if(!eyeL || !eyeR) return;
+
+  eyeL.classList.add("on");
+  eyeR.classList.add("on");
+  setTimeout(()=>{
+    eyeL.classList.remove("on");
+    eyeR.classList.remove("on");
+  }, 90);
+}
+
+function stopEyePulse(){
+  if(eyePulseTimer) clearInterval(eyePulseTimer);
+  eyePulseTimer = null;
+}
+
+function startEyePulseFromBpm(){
+  stopEyePulse();
+  if(!headerIsVisibleForEyes()) return;
+
+  const p = getActiveProject();
+  const bpm = clampInt(parseInt(els.bpm?.value || p?.bpm || 95, 10), 40, 240);
+  const intervalMs = 60000 / bpm; // quarter note pulse
+  eyePulseTimer = setInterval(()=>flashEyes(), intervalMs);
+}
 // ---------- header collapse ----------
 function loadHeaderCollapsed(){
   try{ return localStorage.getItem(HEADER_COLLAPSED_KEY) === "1"; }catch{ return false; }
@@ -134,7 +183,12 @@ function setHeaderCollapsed(isCollapsed){
   if(els.headerToggle)  els.headerToggle.textContent  = isCollapsed ? "Show" : "Hide";
   if(els.headerToggle2) els.headerToggle2.textContent = isCollapsed ? "Show" : "Hide";
   saveHeaderCollapsed(!!isCollapsed);
-  updateDockForKeyboard();
+  updateDockForKeyboard();// Don't blink when header is hidden
+if(isCollapsed) stopEyePulse();
+else{
+  if(metroOn){} // metronome tick will blink
+  else if(recording) startEyePulseFromBpm();
+}
 }
 if(els.headerToggle){
   els.headerToggle.addEventListener("click", ()=>{
@@ -450,24 +504,33 @@ document.addEventListener("click", (e)=>{
   if(!chip) return;
 
   const w = (chip.getAttribute("data-rhyme") || chip.textContent || "").trim();
-  const active = document.activeElement;
+  if(!w) return;
 
-  if(active && active.tagName === "TEXTAREA"){
-    const start = active.selectionStart ?? active.value.length;
-    const end = active.selectionEnd ?? active.value.length;
-    const before = active.value.slice(0,start);
-    const after = active.value.slice(end);
+  // Prefer: currently focused textarea, else lastTypingTarget
+  const active = (document.activeElement && isTextTarget(document.activeElement)) ? document.activeElement : null;
+  const target = active || lastTypingTarget;
+
+  if(target && isTextTarget(target)){
+    const start = target.selectionStart ?? target.value.length;
+    const end = target.selectionEnd ?? target.value.length;
+    const before = target.value.slice(0,start);
+    const after = target.value.slice(end);
+
     const spacer = before && !/\s$/.test(before) ? " " : "";
-    active.value = before + spacer + w + after;
-    active.dispatchEvent(new Event("input",{ bubbles:true }));
-    active.focus();
+    target.value = before + spacer + w + after;
+
+    target.dispatchEvent(new Event("input",{ bubbles:true }));
+    target.focus();
+
     const pos = (before + spacer + w).length;
-    active.setSelectionRange(pos,pos);
-  }else{
-    navigator.clipboard?.writeText?.(w)
-      .then(()=>showToast("Copied rhyme"))
-      .catch(()=>showToast("Copy failed"));
+    target.setSelectionRange(pos,pos);
+
+    setLastTypingTarget(target);
+    return;
   }
+
+  // If no textarea exists (rare), do nothing (no clipboard behavior)
+  showToast("Tap a text box first");
 });
 
 // ---------- projects ----------
@@ -658,7 +721,7 @@ function flashBeats(beatInBar){
 function startMetronome(){
   ensureAudio();
   if(audioCtx.state === "suspended") audioCtx.resume();
-  stopMetronome();
+  stopMetronome();stopEyePulse(); // metronome drives the blink, so no separate pulse
 
   metroOn = true;
   els.metroBtn.textContent = "Stop";
@@ -676,7 +739,10 @@ function startMetronome(){
     playHat();
     if(step16 === 0 || step16 === 8) playKick();
     if(step16 === 4 || step16 === 12) playSnare();
-    if(step16 % 4 === 0) flashBeats(beatInBar);
+    if(step16 % 4 === 0){
+  flashBeats(beatInBar);
+  flashEyes();
+    }
 
     metroBeat16++;
     metroTimer = setTimeout(tick, intervalMs);
@@ -690,7 +756,9 @@ function stopMetronome(){
   metroTimer = null;
   metroOn = false;
   els.metroBtn.textContent = "Metronome";
-  els.metroBtn.classList.remove("on");
+  els.metroBtn.classList.remove("on");// If you stop the metronome while still recording, keep blinking on BPM
+if(recording) startEyePulseFromBpm();
+else stopEyePulse();
 }
 
 // ---------- smooth playback (WebAudio) ----------
@@ -833,7 +901,9 @@ async function startRecording(){
 
   recChunks = [];
   recording = true;
-  updateRecordButtonUI();
+  updateRecordButtonUI();// If recording without metronome, still blink on BPM
+if(!metroOn) startEyePulseFromBpm();
+else stopEyePulse();
 
   stopSmoothPlayback();
 
@@ -850,7 +920,7 @@ async function startRecording(){
 
   recorder.onstop = async ()=>{
     recording = false;
-    updateRecordButtonUI();
+    updateRecordButtonUI();stopEyePulse();
 
     if(metroOn) stopMetronome();
 
