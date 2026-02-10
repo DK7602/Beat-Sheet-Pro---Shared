@@ -37,11 +37,10 @@ const els = {
   dockToggle: need("dockToggle"),
 };
 
-const STORAGE_KEY = "beatsheetpro_projects_v1";
-const RHYME_CACHE_KEY = "beatsheetpro_rhyme_cache_v1";
-const DOCK_HIDDEN_KEY = "beatsheetpro_rhymeDock_hidden_v1";
-const HEADER_COLLAPSED_KEY = "beatsheetpro_header_collapsed_v1";
-
+const STORAGE_KEY = "beatsheetpro_shared_projects_v1";
+const RHYME_CACHE_KEY = "beatsheetpro_shared_rhyme_cache_v1";
+const DOCK_HIDDEN_KEY = "beatsheetpro_shared_rhymeDock_hidden_v1";
+const HEADER_COLLAPSED_KEY = "beatsheetpro_shared_header_collapsed_v1";
 const SECTION_DEFS = [
   { key:"verse1",  title:"Verse 1",  bars:16, extra:4 },
   { key:"chorus1", title:"Chorus 1", bars:12, extra:4 },
