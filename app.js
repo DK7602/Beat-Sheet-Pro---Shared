@@ -2,9 +2,19 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "v20260210_2_shared";
-const need = (id) => document.getElementById(id);
-const els = {
+// ✅ STORAGE SCOPING: isolate data per GitHub Pages repo path
+const STORAGE_SCOPE = (() => {
+  // Example pathname: "/Beat-Sheet-Pro---Shared/" or "/Beat-Sheet-Pro---Shared/index.html"
+  const firstFolder = (location.pathname.split("/").filter(Boolean)[0] || "root");
+  return firstFolder.replace(/[^a-z0-9_-]+/gi, "_");
+})();
+
+const KEY_PREFIX = `beatsheetpro__${STORAGE_SCOPE}__`;
+
+const STORAGE_KEY = `${KEY_PREFIX}projects_v1`;
+const RHYME_CACHE_KEY = `${KEY_PREFIX}rhyme_cache_v1`;
+const DOCK_HIDDEN_KEY = `${KEY_PREFIX}rhymeDock_hidden_v1`;
+const HEADER_COLLAPSED_KEY = `${KEY_PREFIX}header_collapsed_v1`;
   exportBtn: need("exportBtn"),
   saveBtn: need("saveBtn"),
   bpm: need("bpm"),
