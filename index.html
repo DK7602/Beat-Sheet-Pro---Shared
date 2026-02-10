@@ -483,5 +483,33 @@
     document.body.appendChild(s);
   })();
   </script>
+  <script>
+/* Show JS errors on-screen (mobile friendly) */
+(function(){
+  function show(msg){
+    let box = document.getElementById("errBox");
+    if(!box){
+      box = document.createElement("div");
+      box.id = "errBox";
+      box.style.cssText =
+        "position:fixed;left:10px;right:10px;top:10px;z-index:99999;" +
+        "background:#111;color:#fff;padding:10px 12px;border-radius:12px;" +
+        "font:12px/1.35 system-ui,Segoe UI,Roboto,Arial;white-space:pre-wrap;" +
+        "max-height:40vh;overflow:auto;opacity:.95";
+      document.body.appendChild(box);
+    }
+    box.textContent = msg;
+  }
+
+  window.addEventListener("error", (e)=>{
+    show("JS ERROR:\n" + (e.message || "Unknown") + "\n\n" + (e.filename||"") + ":" + (e.lineno||"") + ":" + (e.colno||""));
+  });
+
+  window.addEventListener("unhandledrejection", (e)=>{
+    const r = e.reason;
+    show("PROMISE ERROR:\n" + (r && (r.stack || r.message) ? (r.stack || r.message) : String(r)));
+  });
+})();
+  </script>
 </body>
 </html>
