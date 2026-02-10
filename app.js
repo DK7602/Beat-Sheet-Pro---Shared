@@ -2,8 +2,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "v20260210_2"; // bump so you can confirm update is live
-
+const APP_VERSION = "v20260210_2_shared";
 const need = (id) => document.getElementById(id);
 const els = {
   exportBtn: need("exportBtn"),
