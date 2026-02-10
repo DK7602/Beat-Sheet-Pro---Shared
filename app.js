@@ -1,3 +1,4 @@
+window.updateBlinkTargets = window.updateBlinkTargets || function(){};
 /* Beat Sheet Pro - app.js (FULL REPLACE) */
 (() => {
 "use strict";
