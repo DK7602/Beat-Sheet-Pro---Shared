@@ -12,7 +12,7 @@
  * Result: Main + Shared DO NOT share projects/recordings anymore.
  */
 
-const APP_VERSION = "v20260210_3"; // bump so you can confirm update is live
+const APP_VERSION = "v20260210_5"; // bump so you can confirm update is live
 
 const need = (id) => document.getElementById(id);
 const els = {
