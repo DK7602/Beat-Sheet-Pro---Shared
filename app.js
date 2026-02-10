@@ -2,19 +2,20 @@
 (() => {
 "use strict";
 
-// ✅ STORAGE SCOPING: isolate data per GitHub Pages repo path
-const STORAGE_SCOPE = (() => {
-  // Example pathname: "/Beat-Sheet-Pro---Shared/" or "/Beat-Sheet-Pro---Shared/index.html"
-  const firstFolder = (location.pathname.split("/").filter(Boolean)[0] || "root");
-  return firstFolder.replace(/[^a-z0-9_-]+/gi, "_");
-})();
+/**
+ * ✅ STORAGE ISOLATION (IMPORTANT)
+ * This scopes localStorage keys to the FIRST folder in the URL path.
+ * Examples:
+ *  - https://dk7602.github.io/Beat-Sheet-Pro/           => scope "Beat-Sheet-Pro"
+ *  - https://dk7602.github.io/Beat-Sheet-Pro---Shared/  => scope "Beat-Sheet-Pro---Shared"
+ *
+ * Result: Main + Shared DO NOT share projects/recordings anymore.
+ */
 
-const KEY_PREFIX = `beatsheetpro__${STORAGE_SCOPE}__`;
+const APP_VERSION = "v20260210_3"; // bump so you can confirm update is live
 
-const STORAGE_KEY = `${KEY_PREFIX}projects_v1`;
-const RHYME_CACHE_KEY = `${KEY_PREFIX}rhyme_cache_v1`;
-const DOCK_HIDDEN_KEY = `${KEY_PREFIX}rhymeDock_hidden_v1`;
-const HEADER_COLLAPSED_KEY = `${KEY_PREFIX}header_collapsed_v1`;
+const need = (id) => document.getElementById(id);
+const els = {
   exportBtn: need("exportBtn"),
   saveBtn: need("saveBtn"),
   bpm: need("bpm"),
@@ -46,10 +47,44 @@ const HEADER_COLLAPSED_KEY = `${KEY_PREFIX}header_collapsed_v1`;
   dockToggle: need("dockToggle"),
 };
 
-const STORAGE_KEY = "beatsheetpro_shared_projects_v1";
-const RHYME_CACHE_KEY = "beatsheetpro_shared_rhyme_cache_v1";
-const DOCK_HIDDEN_KEY = "beatsheetpro_shared_rhymeDock_hidden_v1";
-const HEADER_COLLAPSED_KEY = "beatsheetpro_shared_header_collapsed_v1";
+// ✅ NEW: repo-scoped storage keys
+const STORAGE_SCOPE = (() => {
+  const firstFolder = (location.pathname.split("/").filter(Boolean)[0] || "root");
+  return firstFolder.replace(/[^a-z0-9_-]+/gi, "_");
+})();
+const KEY_PREFIX = `beatsheetpro__${STORAGE_SCOPE}__`;
+
+const STORAGE_KEY = `${KEY_PREFIX}projects_v1`;
+const RHYME_CACHE_KEY = `${KEY_PREFIX}rhyme_cache_v1`;
+const DOCK_HIDDEN_KEY = `${KEY_PREFIX}rhymeDock_hidden_v1`;
+const HEADER_COLLAPSED_KEY = `${KEY_PREFIX}header_collapsed_v1`;
+
+// ✅ Optional: clean separation from old global keys (pre-scope)
+// If you open the SAME repo on an old version, it used the old keys below.
+// This block attempts a one-time copy from old keys -> new scoped keys (ONLY if scoped key is empty).
+const OLD_STORAGE_KEY = "beatsheetpro_projects_v1";
+const OLD_RHYME_CACHE_KEY = "beatsheetpro_rhyme_cache_v1";
+const OLD_DOCK_HIDDEN_KEY = "beatsheetpro_rhymeDock_hidden_v1";
+const OLD_HEADER_COLLAPSED_KEY = "beatsheetpro_header_collapsed_v1";
+
+(function migrateOldKeysOnce(){
+  try{
+    // only migrate if new scoped key is empty and old exists
+    if(!localStorage.getItem(STORAGE_KEY) && localStorage.getItem(OLD_STORAGE_KEY)){
+      localStorage.setItem(STORAGE_KEY, localStorage.getItem(OLD_STORAGE_KEY));
+    }
+    if(!localStorage.getItem(RHYME_CACHE_KEY) && localStorage.getItem(OLD_RHYME_CACHE_KEY)){
+      localStorage.setItem(RHYME_CACHE_KEY, localStorage.getItem(OLD_RHYME_CACHE_KEY));
+    }
+    if(!localStorage.getItem(DOCK_HIDDEN_KEY) && localStorage.getItem(OLD_DOCK_HIDDEN_KEY)){
+      localStorage.setItem(DOCK_HIDDEN_KEY, localStorage.getItem(OLD_DOCK_HIDDEN_KEY));
+    }
+    if(!localStorage.getItem(HEADER_COLLAPSED_KEY) && localStorage.getItem(OLD_HEADER_COLLAPSED_KEY)){
+      localStorage.setItem(HEADER_COLLAPSED_KEY, localStorage.getItem(OLD_HEADER_COLLAPSED_KEY));
+    }
+  }catch{}
+})();
+
 const SECTION_DEFS = [
   { key:"verse1",  title:"Verse 1",  bars:16, extra:4 },
   { key:"chorus1", title:"Chorus 1", bars:12, extra:4 },
