@@ -521,53 +521,55 @@ document.addEventListener("focusin", (e)=>{
  * Always inserts into the last textarea you were editing.
  * Clipboard copy is only used if no textarea exists yet.
  */
+// ✅ MOBILE-PROOF rhyme insert
 document.addEventListener("click", (e)=>{
   const chip = e.target.closest(".rhymeChip");
   if(!chip) return;
 
-  const w = (chip.getAttribute("data-rhyme") || chip.textContent || "").trim();
-  if(!w) return;
+  const word = (chip.getAttribute("data-rhyme") || chip.textContent || "").trim();
+  if(!word) return;
 
-  // Prefer currently active textarea, otherwise last focused textarea
-  const active = (document.activeElement && document.activeElement.tagName === "TEXTAREA")
-    ? document.activeElement
-    : lastTextarea;
+  // Use active textarea OR last focused textarea
+  let ta = null;
 
-  if(active && active.tagName === "TEXTAREA"){
-    // Restore focus (some phones blur on tap)
-    active.focus();
+  if(document.activeElement && document.activeElement.tagName === "TEXTAREA"){
+    ta = document.activeElement;
+  } else {
+    ta = lastTextarea;
+  }
 
-    const start = active.selectionStart ?? active.value.length;
-    const end = active.selectionEnd ?? active.value.length;
+  if(ta && ta.tagName === "TEXTAREA"){
+    ta.focus();
 
-    const before = active.value.slice(0,start);
-    const after = active.value.slice(end);
+    const start = ta.selectionStart ?? ta.value.length;
+    const end   = ta.selectionEnd ?? ta.value.length;
 
-    // Replace current word fragment (no slashes) and keep spacing clean
-    const beforeWordMatch = before.match(/(^|[\s\/])([^\s\/]*)$/);
-    const beforePrefix = beforeWordMatch
-      ? before.slice(0, before.length - (beforeWordMatch[2] || "").length)
-      : before;
+    const before = ta.value.slice(0,start);
+    const after  = ta.value.slice(end);
 
-    const afterWordMatch = after.match(/^([^\s\/]*)(.*)$/);
-    const afterSuffixRemainder = afterWordMatch ? (afterWordMatch[2] || "") : after;
+    // replace current word fragment
+    const match = before.match(/(^|[\s\/])([^\s\/]*)$/);
+    const prefix = match ? before.slice(0, before.length - (match[2]||"").length) : before;
 
-    const needsSpace = beforePrefix && !/[\s\/]$/.test(beforePrefix);
-    const inserted = (needsSpace ? " " : "") + w;
+    const afterMatch = after.match(/^([^\s\/]*)(.*)$/);
+    const afterRest = afterMatch ? afterMatch[2] : after;
 
-    active.value = beforePrefix + inserted + afterSuffixRemainder;
-    active.dispatchEvent(new Event("input",{ bubbles:true }));
+    const space = prefix && !/[\s\/]$/.test(prefix) ? " " : "";
+    const insert = space + word;
 
-    const pos = (beforePrefix + inserted).length;
-    active.setSelectionRange(pos,pos);
+    ta.value = prefix + insert + afterRest;
+    ta.dispatchEvent(new Event("input",{bubbles:true}));
+
+    const pos = (prefix + insert).length;
+    ta.setSelectionRange(pos,pos);
 
     showToast("Inserted");
     return;
   }
 
-  // Fallback: copy if user hasn't focused a textarea yet
-  navigator.clipboard?.writeText?.(w)
-    .then(()=>showToast("Copied rhyme"))
+  // fallback copy
+  navigator.clipboard?.writeText?.(word)
+    .then(()=>showToast("Copied"))
     .catch(()=>showToast("Copy failed"));
 });
 
