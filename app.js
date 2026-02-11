@@ -21,8 +21,7 @@ document.addEventListener("focusin", (e)=>{
  *
  * Result: Main + Shared DO NOT share projects/recordings.
  */
-
-  const APP_VERSION = "v20260210_SHARED_4";// bump to verify Shared updated
+const APP_VERSION = "v20260210_SHARED_6";// bump to verify Shared updated
 
 const need = (id) => document.getElementById(id);
 const els = {
