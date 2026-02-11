@@ -670,7 +670,7 @@
   (function(){
     const repo = (location.pathname.split("/").filter(Boolean)[0] || "");
     const base = repo ? ("/" + repo) : "";
-    const v = "SHARED_20260210_4"; // << bump when you need to force refresh
+    const v = "SHARED_20260210_6"; // << bump when you need to force refresh
 
     const man = document.getElementById("appManifest");
     if(man) man.href = base + "/manifest.webmanifest?v=" + encodeURIComponent(v);
