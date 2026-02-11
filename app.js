@@ -2,7 +2,15 @@ window.updateBlinkTargets = window.updateBlinkTargets || function(){};
 window.updateBlinkTargets = window.updateBlinkTargets || function(){};
 /* Beat Sheet Pro - app.js (FULL REPLACE) */
 (() => {
-"use strict";
+"use strict";// ✅ remembers last textarea user typed in (mobile fix)
+let lastTextarea = null;
+
+document.addEventListener("focusin", (e)=>{
+  const t = e.target;
+  if(t && t.tagName === "TEXTAREA"){
+    lastTextarea = t;
+  }
+});
 
 /**
  * ✅ STORAGE ISOLATION (IMPORTANT)
