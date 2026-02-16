@@ -928,9 +928,29 @@ function setActiveBarDOM(pageKey, barIdx){
   return bar;
 }
 
+function findVerticalScroller(startEl){
+  let el = startEl;
+  while(el && el !== document.body){
+    const cs = getComputedStyle(el);
+    const oy = cs.overflowY;
+    const canScrollY = (oy === "auto" || oy === "scroll") && (el.scrollHeight > el.clientHeight + 2);
+    if(canScrollY) return el;
+    el = el.parentElement;
+  }
+
+  // fallback: try the active page itself
+  const page = startEl?.closest?.(".page");
+  if(page && page.scrollHeight > page.clientHeight + 2) return page;
+
+  // last resort
+  return document.scrollingElement || document.documentElement;
+}
+
 function scrollBarIntoView(barEl){
-  const scroller = els.bars;
-  if(!scroller || !barEl) return;
+  if(!barEl) return;
+
+  const scroller = findVerticalScroller(barEl);
+  if(!scroller) return;
 
   const cRect = scroller.getBoundingClientRect();
   const bRect = barEl.getBoundingClientRect();
@@ -942,13 +962,16 @@ function scrollBarIntoView(barEl){
   const botOk = bRect.bottom <= (cRect.bottom - padBot);
   if(topOk && botOk) return;
 
-  const targetTop = scroller.scrollTop + (bRect.top - cRect.top) - (cRect.height * 0.22);
+  const curTop = scroller.scrollTop || 0;
+  const targetTop = curTop + (bRect.top - cRect.top) - (cRect.height * 0.22);
 
-  scroller.scrollTo({
-    top: Math.max(0, targetTop),
-    behavior: "smooth"
-  });
+  if(typeof scroller.scrollTo === "function"){
+    scroller.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" });
+  }else{
+    scroller.scrollTop = Math.max(0, targetTop);
+  }
 }
+
 
 function flashBeatOnBar(barEl, beatInBar){
   if(!barEl) return;
