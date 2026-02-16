@@ -1,4 +1,4 @@
-/* Beat Sheet Pro - app.js (FULL REPLACE v_IDB_AUDIO_PAGER_CARDS_BARPLUS_DEL_AUTOSCROLL_v2) */
+/* Beat Sheet Pro - app.js (FULL REPLACE v_IDB_AUDIO_PAGER_CARDS_CARDPLUS_AUTOSCROLL_v3) */
 (() => {
 "use strict";
 
@@ -40,7 +40,7 @@ const els = {
   drum3Btn: need("drum3Btn"),
   drum4Btn: need("drum4Btn"),
 
-  // ✅ autoscroll button
+  // autoscroll
   autoScrollBtn: need("autoScrollBtn"),
 
   // projects
@@ -105,7 +105,6 @@ const OLD_HEADER_COLLAPSED_KEY = "beatsheetpro_header_collapsed_v1";
 
 /***********************
 ✅ SECTIONS
-- NEW BEHAVIOR: new projects start with 1 card (bar) per page.
 ***********************/
 const SECTION_DEFS = [
   { key:"verse1",  title:"Verse 1"  },
@@ -170,12 +169,13 @@ function updateAutoScrollBtn(){
 }
 function setAutoScroll(v){
   autoScrollOn = !!v;
-  lastAutoScrollToken = null; // ✅ reset always when toggling
+  lastAutoScrollToken = null;
+  // when switching modes, clear previous visual state so the new mode looks correct immediately
+  clearAllPracticeAndActive();
   saveAutoScroll(autoScrollOn);
   updateAutoScrollBtn();
   showToast(autoScrollOn ? "Auto Scroll ON" : "Auto Scroll OFF");
 }
-
 els.autoScrollBtn?.addEventListener("click", ()=> setAutoScroll(!autoScrollOn));
 
 /***********************
@@ -250,7 +250,7 @@ async function ensureRecInIdb(rec){
       await idbPutAudio({ id, blob, name: rec.name, mime: rec.mime || blob.type, createdAt: rec.createdAt });
       rec.blobId = id;
       rec.mime = rec.mime || blob.type || "audio/*";
-      delete rec.dataUrl; // ✅ critical
+      delete rec.dataUrl;
       return true;
     }catch(e){
       console.error(e);
@@ -884,13 +884,14 @@ function playHat(atTime = null, amp = 0.18){
 }
 
 /***********************
-✅ ACTIVE BAR + FLASH (syncs highlight + autoscroll)
+✅ ACTIVE BAR + HIGHLIGHT ENGINE
+Fix #2: AutoScroll ON cycles bars + scrolls
+Fix #3: AutoScroll OFF ticks ALL cards on active page
 ***********************/
 let lastActiveBarKey = null;
 let lastActiveBarIdx = -1;
-let lastActiveBeatInBar = -1;
 
-// ✅ only scroll once per bar (prevents repeated smooth-scroll calls)
+// only scroll once per bar
 let lastAutoScrollToken = null;
 
 function getActiveRealPageEl(pageKey){
@@ -902,22 +903,17 @@ function clearOldActiveBar(){
   const oldPage = getActiveRealPageEl(lastActiveBarKey);
   if(oldPage){
     oldPage.querySelectorAll(".bar.barActive").forEach(el=>el.classList.remove("barActive"));
-    oldPage.querySelectorAll(".bar.practiceOn").forEach(el=>el.classList.remove("practiceOn"));
     oldPage.querySelectorAll(".beat.flash").forEach(el=>el.classList.remove("flash"));
   }
 }
 
-function setPracticeBeats(barEl, on){
-  if(!barEl) return;
-  barEl.classList.toggle("practiceOn", !!on);
-  // remove single-tick flash when in practice mode
-  if(on){
-    barEl.querySelectorAll(".beat.flash").forEach(b=>b.classList.remove("flash"));
-  }
+function clearFlashesOnPage(pageKey){
+  const page = getActiveRealPageEl(pageKey);
+  if(!page) return;
+  page.querySelectorAll(".beat.flash").forEach(el=>el.classList.remove("flash"));
 }
 
 function setActiveBarDOM(pageKey, barIdx){
-  // clear old
   clearOldActiveBar();
 
   const page = getActiveRealPageEl(pageKey);
@@ -933,10 +929,9 @@ function setActiveBarDOM(pageKey, barIdx){
 }
 
 function scrollBarIntoView(barEl){
-  const scroller = els.bars; // vertical scroller
+  const scroller = els.bars;
   if(!scroller || !barEl) return;
 
-  // ✅ more reliable: compute target using rect delta + scrollTop
   const cRect = scroller.getBoundingClientRect();
   const bRect = barEl.getBoundingClientRect();
 
@@ -966,11 +961,35 @@ function flashBeatOnBar(barEl, beatInBar){
   setTimeout(()=>beats.forEach(b=>b.classList.remove("flash")), 90);
 }
 
+function flashBeatOnAllBars(pageKey, beatInBar){
+  const page = getActiveRealPageEl(pageKey);
+  if(!page) return;
+
+  // no "active bar" in this mode
+  page.querySelectorAll(".bar.barActive").forEach(b=>b.classList.remove("barActive"));
+
+  // flash the same beat box on every bar card
+  const bars = page.querySelectorAll(".bar");
+  bars.forEach(bar=>{
+    const beats = bar.querySelectorAll(".beat");
+    if(beats && beats.length >= 4){
+      beats.forEach(b=>b.classList.remove("flash"));
+      const t = beats[beatInBar];
+      if(t) t.classList.add("flash");
+    }
+  });
+
+  setTimeout(()=>{
+    const page2 = getActiveRealPageEl(pageKey);
+    if(!page2) return;
+    page2.querySelectorAll(".beat.flash").forEach(b=>b.classList.remove("flash"));
+  }, 90);
+}
+
 function syncHighlightAndScroll(pageKey, barIdx, beatInBar){
   const p = getActiveProject();
   if(!p || !pageKey) return;
 
-  // keep FULL as “editor only”
   if(pageKey === "full") return;
 
   const sec = p.sections?.[pageKey];
@@ -978,41 +997,43 @@ function syncHighlightAndScroll(pageKey, barIdx, beatInBar){
   const safeBarIdx = count ? (barIdx % count) : 0;
   const safeBeat = Math.max(0, Math.min(3, beatInBar|0));
 
-  const barEl = setActiveBarDOM(pageKey, safeBarIdx);
+  // ✅ FIX #3: AutoScroll OFF = tick-highlight ALL cards on the page
+  if(!autoScrollOn){
+    // avoid cross-page leftovers
+    if(lastActiveBarKey && lastActiveBarKey !== pageKey) clearOldActiveBar();
+    lastActiveBarKey = pageKey;
+    lastActiveBarIdx = -1;
+    lastAutoScrollToken = null;
 
-  // ✅ FIX #3:
-  // - AutoScroll ON: tick flashes with beat
-  // - AutoScroll OFF: light up ALL 4 beat boxes for practice
-  if(autoScrollOn){
-    setPracticeBeats(barEl, false);
-    flashBeatOnBar(barEl, safeBeat);
-  }else{
-    setPracticeBeats(barEl, true);
+    flashBeatOnAllBars(pageKey, safeBeat);
+    return;
   }
 
-  // ✅ FIX #1: autoscroll when ON (scroll once per bar)
-  if(autoScrollOn && barEl && safeBeat === 0){
+  // ✅ AutoScroll ON = active bar cycles + scrolls
+  const barEl = setActiveBarDOM(pageKey, safeBarIdx);
+  if(barEl) flashBeatOnBar(barEl, safeBeat);
+
+  // scroll once per bar on beat 1
+  if(barEl && safeBeat === 0){
     const token = `${pageKey}:${safeBarIdx}`;
     if(token !== lastAutoScrollToken){
       lastAutoScrollToken = token;
-      // small rAF helps on mobile layouts/pager
       requestAnimationFrame(()=>scrollBarIntoView(barEl));
     }
   }
-
-  lastActiveBeatInBar = safeBeat;
 }
 
 function clearAllPracticeAndActive(){
   document.querySelectorAll(".bar.barActive").forEach(b=>b.classList.remove("barActive"));
-  document.querySelectorAll(".bar.practiceOn").forEach(b=>b.classList.remove("practiceOn"));
   document.querySelectorAll(".beat.flash").forEach(b=>b.classList.remove("flash"));
   lastActiveBarKey = null;
   lastActiveBarIdx = -1;
-  lastActiveBeatInBar = -1;
   lastAutoScrollToken = null;
 }
 
+/***********************
+✅ drums UI
+***********************/
 function drumButtons(){
   return [els.drum1Btn, els.drum2Btn, els.drum3Btn, els.drum4Btn].filter(Boolean);
 }
@@ -1093,7 +1114,6 @@ function stopMetronome(){
   metroOn = false;
   updateDrumButtonsUI();
   if(!(recording || playback.isPlaying)) stopEyePulse();
-  // clear practice highlights when nothing running
   if(!playback.isPlaying && !recording) clearAllPracticeAndActive();
 }
 function handleDrumPress(which){
@@ -1157,7 +1177,6 @@ const playback = {
     if(!(metroOn || recording)) stopEyePulse();
     if(fromEnded) showToast("Done");
 
-    // ✅ clear practice highlights when playback ends and metro not on
     if(!metroOn && !recording) clearAllPracticeAndActive();
   },
 
@@ -1557,13 +1576,8 @@ function buildPager(p){
 
     const title = (SECTION_DEFS.find(s=>s.key===key)?.title || key).toUpperCase();
 
-    page.innerHTML = `
-      <div class="pageTitle">${escapeHtml(title)}</div>
-
-      <div class="pageTools">
-        <button type="button" class="barAddBtn" data-action="addBar" data-sec="${escapeHtml(key)}">Bar +</button>
-      </div>
-    `;
+    // ✅ Fix #1: NO top "Bar +" button. Add happens via + on each card.
+    page.innerHTML = `<div class="pageTitle">${escapeHtml(title)}</div>`;
 
     const mount = document.createElement("div");
     mount.style.display = "flex";
@@ -1600,8 +1614,12 @@ function setActiveSectionFromIdx(p, idx){
   if(p.activeSection !== key){
     p.activeSection = key;
     touchProject(p);
-    // ✅ FIX #1: section change resets token so scroll can fire immediately
+
+    // important for autoscroll scroll-per-bar
     lastAutoScrollToken = null;
+
+    // when changing pages in non-autoscroll practice, clear old flashes
+    clearAllPracticeAndActive();
   }
 }
 function shouldIgnoreSwipeStart(target){
@@ -1710,7 +1728,7 @@ function setupCarouselPager(pagerEl, p){
 
 /***********************
 ✅ bar rendering helper
-- FIX #2: add "+" button left of "×" on each card
+Fix #1: "+" exists on EVERY card and is just "+"
 ***********************/
 function renderSectionBarsInto(p, sectionKey, mountEl){
   const sec = p.sections[sectionKey];
@@ -1829,6 +1847,7 @@ function renderSectionBarsInto(p, sectionKey, mountEl){
 
 /***********************
 ✅ add/delete bar actions (delegation)
+Fix #1: ONLY card-based plus remains
 ***********************/
 document.addEventListener("click", (e)=>{
   const btn = e.target.closest("[data-action]");
@@ -1837,24 +1856,6 @@ document.addEventListener("click", (e)=>{
   const action = btn.getAttribute("data-action");
   const p = getActiveProject();
 
-  if(action === "addBar"){
-    const secKey = btn.getAttribute("data-sec");
-    if(!secKey || !p.sections?.[secKey]) return;
-    p.sections[secKey].bars.push({ text:"" });
-    touchProject(p);
-    renderBars();
-
-    requestAnimationFrame(()=>{
-      const page = getActiveRealPageEl(secKey);
-      const lastIdx = p.sections[secKey].bars.length - 1;
-      page?.querySelector(`textarea[data-sec="${CSS.escape(secKey)}"][data-idx="${lastIdx}"]`)?.focus?.();
-    });
-
-    showToast("Added bar");
-    return;
-  }
-
-  // ✅ FIX #2: add below current card
   if(action === "addBarAfter"){
     const secKey = btn.getAttribute("data-sec");
     const idxStr = btn.getAttribute("data-idx");
@@ -1911,7 +1912,6 @@ function renderBars(){
   const pager = buildPager(p);
   els.bars.appendChild(pager);
 
-  // reset scroll token after rebuild
   lastAutoScrollToken = null;
 
   // FULL editor
