@@ -1,4 +1,4 @@
-<!-- index.html (FULL REPLACE v_HOBO_BEATSHEET_IDB_PAGER_CARDS_BARPLUS_DEL_AUTOSCROLL_v1) -->
+<!-- index.html (FULL REPLACE v_HOBO_BEATSHEET_IDB_PAGER_CARDS_BARPLUS_DEL_AUTOSCROLL_v2) -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -82,7 +82,6 @@
       padding:0 2px;
     }
 
-    /* ✅ NEW: Bar+ row */
     .pageTools{
       display:flex;
       justify-content:flex-end;
@@ -297,8 +296,6 @@
       box-shadow: 0 0 10px 4px rgba(255, 43, 43, .55);
     }
 
-    /* ✅ FIXED ONE-LINE TOOL ROW (no horizontal scroll)
-       4 drums + Scroll + Record = 6 columns */
     .stickyTools{
       display:grid;
       grid-template-columns: repeat(6, 1fr);
@@ -327,7 +324,6 @@
       box-shadow: 0 0 0 4px rgba(0,0,0,.08);
     }
 
-    /* ✅ NEW AutoScroll button styling */
     .autoBtn{
       display:flex; align-items:center; justify-content:center;
       font-weight:1000;
@@ -515,7 +511,6 @@
       box-shadow:var(--shadow);
     }
 
-    /* ✅ NEW: active bar outline (helps autoscroll feel “locked in”) */
     .bar.barActive{
       outline:3px solid rgba(0,0,0,.10);
       outline-offset:2px;
@@ -534,6 +529,15 @@
       gap:10px;
       min-width:0;
     }
+
+    /* ✅ right button group */
+    .barRightBtns{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex:0 0 auto;
+    }
+
     .barNum{
       width:34px;
       height:34px;
@@ -569,7 +573,26 @@
     .syllPill.yellow{ border-color: rgba(255, 213, 74, .95); box-shadow:0 0 0 4px rgba(255, 213, 74, .22); }
     .syllPill.red{ border-color: rgba(255, 43, 43, .9); box-shadow:0 0 0 4px rgba(255, 43, 43, .18); }
 
-    /* ✅ NEW: delete button on each bar card */
+    /* ✅ NEW: plus button on each bar card */
+    .barPlusBtn{
+      width:38px;
+      height:38px;
+      padding:0;
+      border-radius:999px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:18px;
+      font-weight:1000;
+      line-height:1;
+      border:1px solid rgba(0,0,0,.25);
+      background: rgba(0,0,0,.06);
+      color:#111;
+      box-shadow:0 6px 14px rgba(0,0,0,.08);
+      flex:0 0 auto;
+      cursor:pointer;
+    }
+
     .barDelBtn{
       width:38px;
       height:38px;
@@ -619,9 +642,17 @@
       overflow-wrap:anywhere;
     }
     .beat.snare{ background:var(--snare); }
+
+    /* normal tick flash */
     .beat.flash{
       background:var(--hl) !important;
       box-shadow:0 0 0 4px rgba(255,230,106,.45);
+    }
+
+    /* ✅ FIX #3: practice mode = all 4 beat boxes lit when AutoScroll is OFF */
+    .bar.practiceOn .beat{
+      background:var(--hl) !important;
+      box-shadow:0 0 0 4px rgba(255,230,106,.28);
     }
 
     .fullBox{
@@ -794,7 +825,6 @@
       <button id="drum3Btn" class="drumBtn" type="button" aria-label="Drum 3">🥁</button>
       <button id="drum4Btn" class="drumBtn" type="button" aria-label="Drum 4">🥁</button>
 
-      <!-- ✅ NEW: AutoScroll button between drums and record -->
       <button id="autoScrollBtn" class="autoBtn" type="button" aria-label="Auto Scroll" title="Auto Scroll">Scroll</button>
 
       <button id="recordBtn" class="recordBtn" type="button">Record</button>
@@ -832,7 +862,7 @@
   (function(){
     const repo = (location.pathname.split("/").filter(Boolean)[0] || "");
     const base = repo ? ("/" + repo) : "";
-    const v = "SHARED_20260216_BEATSHEET_BARPLUS_DEL_AUTOSCROLL_v1";
+    const v = "SHARED_20260216_BEATSHEET_BARPLUS_DEL_AUTOSCROLL_v2";
 
     const man = document.getElementById("appManifest");
     if(man) man.href = base + "/manifest.webmanifest?v=" + encodeURIComponent(v);
