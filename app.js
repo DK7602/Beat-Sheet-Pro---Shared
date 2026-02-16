@@ -1,4 +1,4 @@
-/* Beat Sheet Pro - app.js (FULL REPLACE v_IDB_AUDIO_PAGER_CARDS_BARPLUS_DEL_AUTOSCROLL_v1) */
+/* Beat Sheet Pro - app.js (FULL REPLACE v_IDB_AUDIO_PAGER_CARDS_BARPLUS_DEL_AUTOSCROLL_v2) */
 (() => {
 "use strict";
 
@@ -40,7 +40,7 @@ const els = {
   drum3Btn: need("drum3Btn"),
   drum4Btn: need("drum4Btn"),
 
-  // ✅ NEW: autoscroll button (between drums + record)
+  // ✅ autoscroll button
   autoScrollBtn: need("autoScrollBtn"),
 
   // projects
@@ -118,8 +118,6 @@ const SECTION_DEFS = [
 ];
 
 const FULL_ORDER = ["verse1","chorus1","verse2","chorus2","verse3","bridge","chorus3"];
-
-// ✅ pager order
 const PAGE_ORDER = ["full", ...FULL_ORDER];
 
 const FULL_HEADINGS = FULL_ORDER.map(k => (SECTION_DEFS.find(s=>s.key===k)?.title || k).toUpperCase());
@@ -167,12 +165,12 @@ function saveAutoScroll(v){
 function updateAutoScrollBtn(){
   if(!els.autoScrollBtn) return;
   els.autoScrollBtn.classList.toggle("on", !!autoScrollOn);
-  els.autoScrollBtn.textContent = autoScrollOn ? "Scroll" : "Scroll";
+  els.autoScrollBtn.textContent = "Scroll";
   els.autoScrollBtn.title = autoScrollOn ? "Auto Scroll: ON" : "Auto Scroll: OFF";
 }
 function setAutoScroll(v){
   autoScrollOn = !!v;
-  if(!autoScrollOn) lastAutoScrollToken = null; // ✅ reset
+  lastAutoScrollToken = null; // ✅ reset always when toggling
   saveAutoScroll(autoScrollOn);
   updateAutoScrollBtn();
   showToast(autoScrollOn ? "Auto Scroll ON" : "Auto Scroll OFF");
@@ -656,7 +654,6 @@ document.addEventListener("click", (e)=>{
 
 /***********************
 ✅ projects
-- NEW: sections start with 1 bar each
 ***********************/
 function blankSections(){
   const sections = {};
@@ -664,7 +661,7 @@ function blankSections(){
     sections[s.key] = {
       key: s.key,
       title: s.title,
-      bars: [{ text:"" }], // ✅ 1 card per page
+      bars: [{ text:"" }],
     };
   }
   return sections;
@@ -711,7 +708,6 @@ function repairProject(p){
     if(p.sections[def.key].bars.length === 0){
       p.sections[def.key].bars = [{ text:"" }];
     }
-    // normalize bar objects
     p.sections[def.key].bars = p.sections[def.key].bars.map(b => ({ text: (b?.text ?? "") }));
   }
 
@@ -887,7 +883,6 @@ function playHat(atTime = null, amp = 0.18){
   noise.stop(t + 0.02);
 }
 
-
 /***********************
 ✅ ACTIVE BAR + FLASH (syncs highlight + autoscroll)
 ***********************/
@@ -899,18 +894,31 @@ let lastActiveBeatInBar = -1;
 let lastAutoScrollToken = null;
 
 function getActiveRealPageEl(pageKey){
-  // there are clones; choose the real one
   return document.querySelector(`.page[data-page-key="${CSS.escape(pageKey)}"]:not([data-clone="1"])`);
+}
+
+function clearOldActiveBar(){
+  if(lastActiveBarKey == null) return;
+  const oldPage = getActiveRealPageEl(lastActiveBarKey);
+  if(oldPage){
+    oldPage.querySelectorAll(".bar.barActive").forEach(el=>el.classList.remove("barActive"));
+    oldPage.querySelectorAll(".bar.practiceOn").forEach(el=>el.classList.remove("practiceOn"));
+    oldPage.querySelectorAll(".beat.flash").forEach(el=>el.classList.remove("flash"));
+  }
+}
+
+function setPracticeBeats(barEl, on){
+  if(!barEl) return;
+  barEl.classList.toggle("practiceOn", !!on);
+  // remove single-tick flash when in practice mode
+  if(on){
+    barEl.querySelectorAll(".beat.flash").forEach(b=>b.classList.remove("flash"));
+  }
 }
 
 function setActiveBarDOM(pageKey, barIdx){
   // clear old
-  if(lastActiveBarKey != null){
-    const oldPage = getActiveRealPageEl(lastActiveBarKey);
-    if(oldPage){
-      oldPage.querySelectorAll(".bar.barActive").forEach(el=>el.classList.remove("barActive"));
-    }
-  }
+  clearOldActiveBar();
 
   const page = getActiveRealPageEl(pageKey);
   if(!page) return null;
@@ -925,23 +933,21 @@ function setActiveBarDOM(pageKey, barIdx){
 }
 
 function scrollBarIntoView(barEl){
-  const scroller = els.bars; // ✅ this is your vertical scroller
+  const scroller = els.bars; // vertical scroller
   if(!scroller || !barEl) return;
 
+  // ✅ more reliable: compute target using rect delta + scrollTop
   const cRect = scroller.getBoundingClientRect();
   const bRect = barEl.getBoundingClientRect();
 
-  // Already comfortably visible?
   const padTop = 70;
   const padBot = 140;
+
   const topOk = bRect.top >= (cRect.top + padTop);
   const botOk = bRect.bottom <= (cRect.bottom - padBot);
   if(topOk && botOk) return;
 
-  // ✅ Absolute target scrollTop (reliable inside nested pager/cards)
-  const currentTop = scroller.scrollTop;
-  const deltaTop = (bRect.top - cRect.top);
-  const targetTop = currentTop + deltaTop - (cRect.height * 0.22);
+  const targetTop = scroller.scrollTop + (bRect.top - cRect.top) - (cRect.height * 0.22);
 
   scroller.scrollTo({
     top: Math.max(0, targetTop),
@@ -962,7 +968,10 @@ function flashBeatOnBar(barEl, beatInBar){
 
 function syncHighlightAndScroll(pageKey, barIdx, beatInBar){
   const p = getActiveProject();
-  if(!p || !pageKey || pageKey === "full") return;
+  if(!p || !pageKey) return;
+
+  // keep FULL as “editor only”
+  if(pageKey === "full") return;
 
   const sec = p.sections?.[pageKey];
   const count = sec?.bars?.length || 1;
@@ -971,19 +980,37 @@ function syncHighlightAndScroll(pageKey, barIdx, beatInBar){
 
   const barEl = setActiveBarDOM(pageKey, safeBarIdx);
 
-  // always flash (highlight tick)
-  flashBeatOnBar(barEl, safeBeat);
+  // ✅ FIX #3:
+  // - AutoScroll ON: tick flashes with beat
+  // - AutoScroll OFF: light up ALL 4 beat boxes for practice
+  if(autoScrollOn){
+    setPracticeBeats(barEl, false);
+    flashBeatOnBar(barEl, safeBeat);
+  }else{
+    setPracticeBeats(barEl, true);
+  }
 
-  // ✅ autoscroll only when ON, and only once per bar
+  // ✅ FIX #1: autoscroll when ON (scroll once per bar)
   if(autoScrollOn && barEl && safeBeat === 0){
     const token = `${pageKey}:${safeBarIdx}`;
     if(token !== lastAutoScrollToken){
       lastAutoScrollToken = token;
-      scrollBarIntoView(barEl);
+      // small rAF helps on mobile layouts/pager
+      requestAnimationFrame(()=>scrollBarIntoView(barEl));
     }
   }
 
   lastActiveBeatInBar = safeBeat;
+}
+
+function clearAllPracticeAndActive(){
+  document.querySelectorAll(".bar.barActive").forEach(b=>b.classList.remove("barActive"));
+  document.querySelectorAll(".bar.practiceOn").forEach(b=>b.classList.remove("practiceOn"));
+  document.querySelectorAll(".beat.flash").forEach(b=>b.classList.remove("flash"));
+  lastActiveBarKey = null;
+  lastActiveBarIdx = -1;
+  lastActiveBeatInBar = -1;
+  lastAutoScrollToken = null;
 }
 
 function drumButtons(){
@@ -1000,7 +1027,6 @@ function updateDrumButtonsUI(){
 
 /***********************
 ✅ Metronome (drums)
-- Syncs highlight + autoscroll to beat tick
 ***********************/
 function startMetronome(){
   ensureAudio();
@@ -1019,9 +1045,8 @@ function startMetronome(){
     const step16 = metroBeat16 % 16;
     const beatInBar = Math.floor(step16 / 4);
 
-    // quarter-beat count (0..)
-    const beatCount = Math.floor(metroBeat16 / 4);     // every 4 steps = 1 beat
-    const barIdx = Math.floor(beatCount / 4);          // every 4 beats = 1 bar
+    const beatCount = Math.floor(metroBeat16 / 4);
+    const barIdx = Math.floor(beatCount / 4);
 
     // play drums
     if(activeDrum === 1){
@@ -1053,7 +1078,6 @@ function startMetronome(){
       if(step16 === 4 || step16 === 12) playSnare();
     }
 
-    // ✅ highlight + autoscroll follow active section page
     const p = getActiveProject();
     const pageKey = p?.activeSection || "full";
     syncHighlightAndScroll(pageKey, barIdx, beatInBar);
@@ -1069,6 +1093,8 @@ function stopMetronome(){
   metroOn = false;
   updateDrumButtonsUI();
   if(!(recording || playback.isPlaying)) stopEyePulse();
+  // clear practice highlights when nothing running
+  if(!playback.isPlaying && !recording) clearAllPracticeAndActive();
 }
 function handleDrumPress(which){
   if(!metroOn){
@@ -1089,9 +1115,8 @@ function handleDrumPress(which){
 
 /***********************
 ✅ PLAYBACK
-- Syncs highlight + autoscroll to audio time
 ***********************/
-const decodedCache = new Map(); // key: blobId/id -> AudioBuffer
+const decodedCache = new Map();
 async function blobToArrayBuffer(blob){ return await blob.arrayBuffer(); }
 async function decodeBlobToBuffer(blob){
   ensureAudio();
@@ -1110,12 +1135,10 @@ const playback = {
   _startTime: 0,
   _offset: 0,
   raf: null,
-  lastBeat: -1,
 
   stop(fromEnded){
     if(this.raf) cancelAnimationFrame(this.raf);
     this.raf = null;
-    this.lastBeat = -1;
 
     if(this._src){
       try{ this._src.onended = null; }catch{}
@@ -1133,6 +1156,9 @@ const playback = {
     renderRecordings();
     if(!(metroOn || recording)) stopEyePulse();
     if(fromEnded) showToast("Done");
+
+    // ✅ clear practice highlights when playback ends and metro not on
+    if(!metroOn && !recording) clearAllPracticeAndActive();
   },
 
   _startSyncLoop(){
@@ -1142,7 +1168,6 @@ const playback = {
       const bpm = getProjectBpm();
       const t = Math.max(0, (audioCtx.currentTime - this._startTime) + this._offset);
 
-      // beatPos in quarter-notes
       const beatPos = (t * bpm) / 60;
       const beatInBar = Math.floor(beatPos) % 4;
       const barIdx = Math.floor(beatPos / 4);
@@ -1163,7 +1188,6 @@ const playback = {
     this.stop(false);
 
     this.recId = rec.id;
-    this.lastBeat = -1;
 
     const blob = await getRecBlob(rec);
     if(!blob){
@@ -1399,7 +1423,6 @@ function applyFullTextToProject(p, fullText){
   const lines = String(fullText||"").replace(/\r/g,"").split("\n");
   let currentKey = null;
 
-  // clear all sections first
   for(const key of FULL_ORDER){
     const sec = p.sections[key];
     if(sec?.bars) sec.bars.forEach(b => b.text = "");
@@ -1411,7 +1434,6 @@ function applyFullTextToProject(p, fullText){
     return def ? def.key : null;
   }
 
-  // write sequentially, expanding bars as needed
   const writeIndex = {};
   for(const k of FULL_ORDER) writeIndex[k] = 0;
 
@@ -1434,7 +1456,6 @@ function applyFullTextToProject(p, fullText){
     writeIndex[currentKey] = i + 1;
   }
 
-  // never allow empty
   for(const key of FULL_ORDER){
     const sec = p.sections[key];
     if(sec && Array.isArray(sec.bars) && sec.bars.length === 0){
@@ -1500,9 +1521,9 @@ function updateRhymesFromFullCaret(fullTa){
 ✅ CAROUSEL PAGER (wrap)
 ***********************/
 const CAROUSEL_ORDER = [
-  PAGE_ORDER[PAGE_ORDER.length - 1], // clone of last (chorus3)
-  ...PAGE_ORDER,                     // real pages
-  PAGE_ORDER[0]                      // clone of first (full)
+  PAGE_ORDER[PAGE_ORDER.length - 1],
+  ...PAGE_ORDER,
+  PAGE_ORDER[0]
 ];
 
 function buildPager(p){
@@ -1515,7 +1536,6 @@ function buildPager(p){
     page.className = "page";
     page.dataset.pageKey = key;
 
-    // mark clones (first and last)
     if(i === 0 || i === CAROUSEL_ORDER.length - 1){
       page.dataset.clone = "1";
     }
@@ -1580,6 +1600,8 @@ function setActiveSectionFromIdx(p, idx){
   if(p.activeSection !== key){
     p.activeSection = key;
     touchProject(p);
+    // ✅ FIX #1: section change resets token so scroll can fire immediately
+    lastAutoScrollToken = null;
   }
 }
 function shouldIgnoreSwipeStart(target){
@@ -1688,7 +1710,7 @@ function setupCarouselPager(pagerEl, p){
 
 /***********************
 ✅ bar rendering helper
-- NEW: delete button per card
+- FIX #2: add "+" button left of "×" on each card
 ***********************/
 function renderSectionBarsInto(p, sectionKey, mountEl){
   const sec = p.sections[sectionKey];
@@ -1714,13 +1736,23 @@ function renderSectionBarsInto(p, sectionKey, mountEl){
           </div>
         </div>
 
-        <button type="button"
-          class="barDelBtn"
-          title="Delete card"
-          aria-label="Delete card"
-          data-action="delBar"
-          data-sec="${escapeHtml(sectionKey)}"
-          data-idx="${idx}">×</button>
+        <div class="barRightBtns">
+          <button type="button"
+            class="barPlusBtn"
+            title="Add card below"
+            aria-label="Add card below"
+            data-action="addBarAfter"
+            data-sec="${escapeHtml(sectionKey)}"
+            data-idx="${idx}">+</button>
+
+          <button type="button"
+            class="barDelBtn"
+            title="Delete card"
+            aria-label="Delete card"
+            data-action="delBar"
+            data-sec="${escapeHtml(sectionKey)}"
+            data-idx="${idx}">×</button>
+        </div>
       </div>
 
       <textarea data-sec="${escapeHtml(sectionKey)}" data-idx="${idx}" placeholder="Type your bar. Optional: use / for beat breaks.">${escapeHtml(bar.text||"")}</textarea>
@@ -1812,7 +1844,6 @@ document.addEventListener("click", (e)=>{
     touchProject(p);
     renderBars();
 
-    // focus new textarea
     requestAnimationFrame(()=>{
       const page = getActiveRealPageEl(secKey);
       const lastIdx = p.sections[secKey].bars.length - 1;
@@ -1820,6 +1851,30 @@ document.addEventListener("click", (e)=>{
     });
 
     showToast("Added bar");
+    return;
+  }
+
+  // ✅ FIX #2: add below current card
+  if(action === "addBarAfter"){
+    const secKey = btn.getAttribute("data-sec");
+    const idxStr = btn.getAttribute("data-idx");
+    const idx = parseInt(idxStr, 10);
+    if(!secKey || !p.sections?.[secKey]) return;
+    const bars = p.sections[secKey].bars;
+    if(!Array.isArray(bars)) return;
+    if(Number.isNaN(idx) || idx < 0 || idx >= bars.length) return;
+
+    bars.splice(idx + 1, 0, { text:"" });
+    touchProject(p);
+    renderBars();
+
+    requestAnimationFrame(()=>{
+      const page = getActiveRealPageEl(secKey);
+      const newIdx = idx + 1;
+      page?.querySelector(`textarea[data-sec="${CSS.escape(secKey)}"][data-idx="${newIdx}"]`)?.focus?.();
+    });
+
+    showToast("Added");
     return;
   }
 
@@ -1855,6 +1910,9 @@ function renderBars(){
   els.bars.innerHTML = "";
   const pager = buildPager(p);
   els.bars.appendChild(pager);
+
+  // reset scroll token after rebuild
+  lastAutoScrollToken = null;
 
   // FULL editor
   const fullTa = els.bars.querySelector(".fullEditor");
