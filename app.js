@@ -172,10 +172,12 @@ function updateAutoScrollBtn(){
 }
 function setAutoScroll(v){
   autoScrollOn = !!v;
+  if(!autoScrollOn) lastAutoScrollToken = null; // ✅ reset
   saveAutoScroll(autoScrollOn);
   updateAutoScrollBtn();
   showToast(autoScrollOn ? "Auto Scroll ON" : "Auto Scroll OFF");
 }
+
 els.autoScrollBtn?.addEventListener("click", ()=> setAutoScroll(!autoScrollOn));
 
 /***********************
@@ -885,6 +887,7 @@ function playHat(atTime = null, amp = 0.18){
   noise.stop(t + 0.02);
 }
 
+
 /***********************
 ✅ ACTIVE BAR + FLASH (syncs highlight + autoscroll)
 ***********************/
@@ -892,10 +895,14 @@ let lastActiveBarKey = null;
 let lastActiveBarIdx = -1;
 let lastActiveBeatInBar = -1;
 
+// ✅ only scroll once per bar (prevents repeated smooth-scroll calls)
+let lastAutoScrollToken = null;
+
 function getActiveRealPageEl(pageKey){
   // there are clones; choose the real one
   return document.querySelector(`.page[data-page-key="${CSS.escape(pageKey)}"]:not([data-clone="1"])`);
 }
+
 function setActiveBarDOM(pageKey, barIdx){
   // clear old
   if(lastActiveBarKey != null){
@@ -918,22 +925,28 @@ function setActiveBarDOM(pageKey, barIdx){
 }
 
 function scrollBarIntoView(barEl){
-  const scroller = els.bars;
+  const scroller = els.bars; // ✅ this is your vertical scroller
   if(!scroller || !barEl) return;
 
-  // Only scroll vertical (don’t mess with pager)
   const cRect = scroller.getBoundingClientRect();
   const bRect = barEl.getBoundingClientRect();
 
-  // If already comfortably visible, do nothing
+  // Already comfortably visible?
   const padTop = 70;
   const padBot = 140;
   const topOk = bRect.top >= (cRect.top + padTop);
   const botOk = bRect.bottom <= (cRect.bottom - padBot);
   if(topOk && botOk) return;
 
-  const targetTop = (bRect.top - cRect.top) - (cRect.height * 0.22);
-  scroller.scrollBy({ top: targetTop, behavior: "smooth" });
+  // ✅ Absolute target scrollTop (reliable inside nested pager/cards)
+  const currentTop = scroller.scrollTop;
+  const deltaTop = (bRect.top - cRect.top);
+  const targetTop = currentTop + deltaTop - (cRect.height * 0.22);
+
+  scroller.scrollTo({
+    top: Math.max(0, targetTop),
+    behavior: "smooth"
+  });
 }
 
 function flashBeatOnBar(barEl, beatInBar){
@@ -958,15 +971,19 @@ function syncHighlightAndScroll(pageKey, barIdx, beatInBar){
 
   const barEl = setActiveBarDOM(pageKey, safeBarIdx);
 
-  // always flash (this is your “highlight tick”)
+  // always flash (highlight tick)
   flashBeatOnBar(barEl, safeBeat);
 
-  // autoscroll only when ON (and only on bar changes)
-  if(autoScrollOn){
-    if(safeBeat === 0){ // new bar starts
+  // ✅ autoscroll only when ON, and only once per bar
+  if(autoScrollOn && barEl && safeBeat === 0){
+    const token = `${pageKey}:${safeBarIdx}`;
+    if(token !== lastAutoScrollToken){
+      lastAutoScrollToken = token;
       scrollBarIntoView(barEl);
     }
   }
+
+  lastActiveBeatInBar = safeBeat;
 }
 
 function drumButtons(){
