@@ -183,6 +183,8 @@ els.autoScrollBtn?.addEventListener("click", ()=> setAutoScroll(!autoScrollOn));
 ***********************/
 const AUDIO_DB_NAME = `${KEY_PREFIX}audio_db_v1`;
 const AUDIO_STORE = "audio";
+// ✅ cache for decoded audio buffers (prevents re-decode lag)
+const decodedCache = new Map();
 
 function openAudioDB(){
   return new Promise((resolve, reject)=>{
@@ -786,6 +788,9 @@ let audioCtx = null;
 let metroGain = null;
 let playbackGain = null;
 
+let masterMix = null;
+let masterLimiter = null;
+
 let recordDest = null;
 let recordMix = null;      // ✅ sums mic + drums + playback for recording
 let recordLimiter = null;  // ✅ prevents recording breakup
@@ -801,10 +806,10 @@ function ensureAudio(){
 
     // speakers
     metroGain = audioCtx.createGain();
-    metroGain.gain.value = 1.8;
+    metroGain.gain.value = 1.4;
 
     playbackGain = audioCtx.createGain();
-    playbackGain.gain.value = 1.0;
+    playbackGain.gain.value = 0.9;
 
     // recording destination
     recordDest = audioCtx.createMediaStreamDestination();
@@ -825,9 +830,25 @@ function ensureAudio(){
     recordMix.connect(recordLimiter);
     recordLimiter.connect(recordDest);
 
-    // speakers output (unchanged)
-    metroGain.connect(audioCtx.destination);
-    playbackGain.connect(audioCtx.destination);
+    // ✅ MASTER SPEAKER BUS (prevents playback breakup/clipping)
+masterMix = audioCtx.createGain();
+masterMix.gain.value = 0.95; // tiny headroom
+
+masterLimiter = audioCtx.createDynamicsCompressor();
+masterLimiter.threshold.value = -10;
+masterLimiter.knee.value = 0;
+masterLimiter.ratio.value = 20;
+masterLimiter.attack.value = 0.003;
+masterLimiter.release.value = 0.12;
+
+// route speakers through limiter
+masterMix.connect(masterLimiter);
+masterLimiter.connect(audioCtx.destination);
+
+// send metro + playback into master speaker bus
+metroGain.connect(masterMix);
+playbackGain.connect(masterMix);
+
 
     // ✅ drums go to recording mix (not straight to recordDest)
     drumRecGain = audioCtx.createGain();
@@ -1262,43 +1283,66 @@ function handleDrumPress(which){
 }
 
 /***********************
-✅ PLAYBACK
+✅ PLAYBACK (crackle-free)
+Use native <audio> element for playback (stable on Android/Chrome),
+but route it through AudioContext for volume + recording mix.
 ***********************/
-const decodedCache = new Map();
-async function blobToArrayBuffer(blob){ return await blob.arrayBuffer(); }
-async function decodeBlobToBuffer(blob){
+let playerEl = null;
+let playerNode = null;
+let playerUrl = null;
+
+function ensurePlayerNode(){
   ensureAudio();
-  const ab = await blobToArrayBuffer(blob);
-  return await new Promise((resolve, reject)=>{
-    audioCtx.decodeAudioData(ab, resolve, reject);
-  });
+  if(!playerEl){
+    playerEl = document.createElement("audio");
+    playerEl.preload = "auto";
+    playerEl.playsInline = true;
+    playerEl.crossOrigin = "anonymous"; // safe even for blob URLs
+  }
+  if(!playerNode){
+    // IMPORTANT: only ONE MediaElementSource per element
+    playerNode = audioCtx.createMediaElementSource(playerEl);
+    playerNode.connect(playbackGain);
+  }
 }
 
 const playback = {
   isPlaying: false,
   recId: null,
 
-  _buf: null,
-  _src: null,
-  _startTime: 0,
-  _offset: 0,
   raf: null,
 
   stop(fromEnded){
     if(this.raf) cancelAnimationFrame(this.raf);
     this.raf = null;
 
-    if(this._src){
-      try{ this._src.onended = null; }catch{}
-      try{ this._src.stop(0); }catch{}
-      try{ this._src.disconnect(); }catch{}
-    }
-    this._src = null;
-    this._buf = null;
-    this._offset = 0;
-    this._startTime = 0;
-
     this.isPlaying = false;
+
+    // stop audio element cleanly
+    try{
+      if(playerEl){
+        playerEl.onended = null;
+        playerEl.pause();
+        playerEl.currentTime = 0;
+      }
+    }catch{}
+
+    // release object URL (prevents memory + glitch buildup)
+    try{
+      if(playerUrl){
+        URL.revokeObjectURL(playerUrl);
+        playerUrl = null;
+      }
+    }catch{}
+
+    // clear src to fully stop streaming/decoding
+    try{
+      if(playerEl){
+        playerEl.removeAttribute("src");
+        playerEl.load();
+      }
+    }catch{}
+
     this.recId = null;
 
     renderRecordings();
@@ -1310,11 +1354,12 @@ const playback = {
 
   _startSyncLoop(){
     const loop = () => {
-      if(!this.isPlaying || !this._buf) return;
+      if(!this.isPlaying || !playerEl) return;
+
+      // Use native playback time (stable)
+      const t = Math.max(0, playerEl.currentTime || 0);
 
       const bpm = getProjectBpm();
-      const t = Math.max(0, (audioCtx.currentTime - this._startTime) + this._offset);
-
       const beatPos = (t * bpm) / 60;
       const beatInBar = Math.floor(beatPos) % 4;
       const barIdx = Math.floor(beatPos / 4);
@@ -1330,10 +1375,11 @@ const playback = {
 
   async playRec(rec){
     ensureAudio();
+    ensurePlayerNode();
+
     if(audioCtx.state === "suspended") await audioCtx.resume();
 
     this.stop(false);
-
     this.recId = rec.id;
 
     const blob = await getRecBlob(rec);
@@ -1343,41 +1389,25 @@ const playback = {
       return;
     }
 
-    const cacheKey = rec.blobId || rec.id;
-    let buf = decodedCache.get(cacheKey);
-    if(!buf){
-      try{
-        buf = await decodeBlobToBuffer(blob);
-        decodedCache.set(cacheKey, buf);
-      }catch(e){
-        console.error(e);
-        showToast("Can't decode audio");
-        this.recId = null;
-        return;
-      }
-    }
+    // build fresh URL every time
+    try{
+      if(playerUrl) URL.revokeObjectURL(playerUrl);
+    }catch{}
+    playerUrl = URL.createObjectURL(blob);
 
-    this._buf = buf;
-
-    const src = audioCtx.createBufferSource();
-    src.buffer = buf;
-    src.connect(playbackGain);
-
-    src.onended = () => {
-      if(this._src === src){
-        this.stop(true);
-      }
+    // wire up ended
+    playerEl.onended = () => {
+      // ended fires reliably even if tab is backgrounded
+      if(this.isPlaying) this.stop(true);
     };
 
-    this._src = src;
-    this._offset = 0;
-    this._startTime = audioCtx.currentTime;
-
-    this.isPlaying = true;
-    startEyePulseFromBpm();
-
+    // set src + play
     try{
-      src.start(0, this._offset);
+      playerEl.src = playerUrl;
+      playerEl.currentTime = 0;
+
+      // IMPORTANT: call play() from a user gesture (your click handler does)
+      await playerEl.play();
     }catch(e){
       console.error(e);
       this.stop(false);
@@ -1385,10 +1415,83 @@ const playback = {
       return;
     }
 
+    this.isPlaying = true;
+    startEyePulseFromBpm();
     this._startSyncLoop();
     renderRecordings();
   }
 };
+
+/***********************
+✅ MP3 ENCODE (Auto convert WebM take -> MP3 right after recording)
+Requires: lame.min.js loaded before app.js (window.lamejs)
+***********************/
+async function webmBlobToAudioBuffer(blob){
+  ensureAudio();
+  const ab = await blob.arrayBuffer();
+  return await new Promise((resolve, reject)=>{
+    audioCtx.decodeAudioData(ab, resolve, reject);
+  });
+}
+
+function mixToMono(audioBuffer){
+  const len = audioBuffer.length;
+  if(audioBuffer.numberOfChannels === 1){
+    return audioBuffer.getChannelData(0).slice(0);
+  }
+  const ch0 = audioBuffer.getChannelData(0);
+  const ch1 = audioBuffer.getChannelData(1);
+  const out = new Float32Array(len);
+  for(let i=0;i<len;i++) out[i] = (ch0[i] + ch1[i]) * 0.5;
+  return out;
+}
+
+function floatTo16BitPCM(float32){
+  const out = new Int16Array(float32.length);
+  for(let i=0;i<float32.length;i++){
+    let s = float32[i];
+    if(s > 1) s = 1;
+    else if(s < -1) s = -1;
+    out[i] = s < 0 ? (s * 0x8000) : (s * 0x7fff);
+  }
+  return out;
+}
+
+async function encodeMp3FromFloat32Mono(samples, sampleRate){
+  if(!window.lamejs || !window.lamejs.Mp3Encoder){
+    throw new Error("lamejs_missing");
+  }
+
+  // 128kbps is a good balance for voice + quick files
+  const mp3enc = new window.lamejs.Mp3Encoder(1, sampleRate, 128);
+
+  const blockSize = 1152;
+  const mp3Chunks = [];
+
+  for(let i=0;i<samples.length;i+=blockSize){
+    const chunk = samples.subarray(i, i + blockSize);
+    const int16 = floatTo16BitPCM(chunk);
+    const buf = mp3enc.encodeBuffer(int16);
+    if(buf && buf.length) mp3Chunks.push(new Uint8Array(buf));
+
+    // yield sometimes so UI doesn’t freeze on longer takes
+    if(i && (i % (blockSize * 60) === 0)){
+      await new Promise(r=>setTimeout(r, 0));
+    }
+  }
+
+  const end = mp3enc.flush();
+  if(end && end.length) mp3Chunks.push(new Uint8Array(end));
+
+  return new Blob(mp3Chunks, { type:"audio/mpeg" });
+}
+
+async function convertWebmBlobToMp3(webmBlob){
+  const audioBuffer = await webmBlobToAudioBuffer(webmBlob);
+  const mono = mixToMono(audioBuffer);
+  return await encodeMp3FromFloat32Mono(mono, audioBuffer.sampleRate);
+}
+
 
 /***********************
 ✅ download (IDB)
@@ -1515,28 +1618,56 @@ async function startRecording(){
     if(metroOn) stopMetronome();
     if(!(metroOn || playback.isPlaying)) stopEyePulse();
 
-    const blob = new Blob(recChunks, { type: recorder.mimeType || mimeType || "audio/webm" });
-    const p = getActiveProject();
+  const webmBlob = new Blob(recChunks, { type: recorder.mimeType || mimeType || "audio/webm" });
 
-    const typed = takeNameFromInput();
-    const name = typed || `Take ${new Date().toLocaleString()}`;
+const p = getActiveProject();
+const typed = takeNameFromInput();
+const name = typed || `Take ${new Date().toLocaleString()}`;
 
-    const id = uid();
-    try{
-      await idbPutAudio({ id, blob, name, mime: blob.type, createdAt: nowISO() });
-    }catch(e){
-      console.error(e);
-      showToast("Audio save failed");
-      return;
-    }
+let mp3Blob;
 
-    const rec = { id, blobId: id, name, createdAt: nowISO(), mime: blob.type || "audio/webm", kind:"take" };
-    p.recordings.unshift(rec);
+try{
+  showToast("Converting to MP3...");
+ mp3Blob = await convertWebmBlobToMp3(webmBlob);
 
-    clearTakeNameInput();
-    touchProject(p);
-    renderRecordings();
-    showToast("Saved take");
+}catch(e){
+  console.error(e);
+  showToast("MP3 conversion failed");
+  return;
+}
+
+const id = uid();
+
+try{
+  await idbPutAudio({
+    id,
+    blob: mp3Blob,
+    name,
+    mime: "audio/mpeg",
+    createdAt: nowISO()
+  });
+}catch(e){
+  console.error(e);
+  showToast("Audio save failed");
+  return;
+}
+
+const rec = {
+  id,
+  blobId: id,
+  name,
+  createdAt: nowISO(),
+  mime: "audio/mpeg",
+  kind: "take"
+};
+
+p.recordings.unshift(rec);
+
+clearTakeNameInput();
+touchProject(p);
+renderRecordings();
+showToast("Saved as MP3");
+ 
   };
 
   recorder.start(1000);
@@ -1557,7 +1688,8 @@ async function handleUploadFile(file){
   const mime = file.type || "audio/*";
 
   await idbPutAudio({ id, blob: file, name, mime, createdAt: nowISO() });
-  decodedCache.delete(id);
+  if(id) decodedCache.delete(id);
+
 
   const rec = { id, blobId: id, name, createdAt: nowISO(), mime, kind: "track" };
   p.recordings.unshift(rec);
@@ -2172,7 +2304,9 @@ function renderRecordings(){
     editBtn.className = "iconBtn";
     editBtn.title = "Edit name";
     editBtn.textContent = "i";
-    editBtn.addEventListener("click", ()=>{
+  editBtn.addEventListener("click", (ev)=>{
+  ev.preventDefault();
+  ev.stopPropagation();
       editingRecId = rec.id;
       renderRecordings();
       requestAnimationFrame(()=>{
@@ -2187,7 +2321,9 @@ function renderRecordings(){
     playBtn.title = "Play";
     const isThisPlaying = playback.isPlaying && playback.recId === rec.id;
     playBtn.textContent = isThisPlaying ? "…" : "▶";
-    playBtn.addEventListener("click", async ()=>{
+ playBtn.addEventListener("click", async (ev)=>{
+  ev.preventDefault();
+  ev.stopPropagation();
       try{
         await playback.playRec(rec);
         showToast("Play");
@@ -2201,7 +2337,9 @@ function renderRecordings(){
     stopBtn.className = "iconBtn stop";
     stopBtn.title = "Stop";
     stopBtn.textContent = "■";
-    stopBtn.addEventListener("click", ()=>{
+  stopBtn.addEventListener("click", (ev)=>{
+  ev.preventDefault();
+  ev.stopPropagation();
       playback.stop(false);
       showToast("Stop");
     });
@@ -2210,13 +2348,20 @@ function renderRecordings(){
     dlBtn.className = "iconBtn";
     dlBtn.title = "Download";
     dlBtn.textContent = "⬇";
-    dlBtn.addEventListener("click", ()=>downloadRec(rec));
+   dlBtn.addEventListener("click", (ev)=>{
+  ev.preventDefault();
+  ev.stopPropagation();
+  downloadRec(rec);
+});
+
 
     const delBtn = document.createElement("button");
     delBtn.className = "iconBtn delete";
     delBtn.title = "Delete";
     delBtn.textContent = "×";
-    delBtn.addEventListener("click", async ()=>{
+   delBtn.addEventListener("click", async (ev)=>{
+  ev.preventDefault();
+  ev.stopPropagation();
       try{
         if(playback.recId === rec.id) playback.stop(false);
         if(editingRecId === rec.id) editingRecId = null;
@@ -2224,7 +2369,7 @@ function renderRecordings(){
         const id = rec.blobId || rec.id;
         if(id) await idbDeleteAudio(id);
 
-        decodedCache.delete(id);
+        if(id) decodedCache.delete(id);
 
         p.recordings = p.recordings.filter(r=>r.id !== rec.id);
         touchProject(p);
@@ -2394,7 +2539,8 @@ els.deleteProjectBtn?.addEventListener("click", async ()=>{
     for(const rec of (active.recordings || [])){
       const id = rec.blobId || rec.id;
       if(id) await idbDeleteAudio(id);
-      decodedCache.delete(id);
+      if(id) decodedCache.delete(id);
+
     }
   }catch{}
 
