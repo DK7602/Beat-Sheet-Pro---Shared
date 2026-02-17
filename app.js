@@ -785,7 +785,10 @@ function renderProjectPicker(){
 let audioCtx = null;
 let metroGain = null;
 let playbackGain = null;
+
 let recordDest = null;
+let recordMix = null;      // ✅ sums mic + drums + playback for recording
+let recordLimiter = null;  // ✅ prevents recording breakup
 
 let metroTimer = null;
 let metroBeat16 = 0;
@@ -796,19 +799,44 @@ function ensureAudio(){
   if(!audioCtx){
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
+    // speakers
     metroGain = audioCtx.createGain();
     metroGain.gain.value = 1.8;
 
     playbackGain = audioCtx.createGain();
     playbackGain.gain.value = 1.0;
 
+    // recording destination
     recordDest = audioCtx.createMediaStreamDestination();
 
+    // ✅ RECORD MIX BUS (record-only)
+    recordMix = audioCtx.createGain();
+    recordMix.gain.value = 0.95; // small headroom before limiter
+
+    // ✅ LIMITER (record-only) to stop breakup
+    recordLimiter = audioCtx.createDynamicsCompressor();
+    recordLimiter.threshold.value = -10; // start limiting near peaks
+    recordLimiter.knee.value = 0;        // hard knee = limiter feel
+    recordLimiter.ratio.value = 20;      // high ratio = limiting
+    recordLimiter.attack.value = 0.003;  // fast catch
+    recordLimiter.release.value = 0.12;  // smooth recovery
+
+    // connect record chain
+    recordMix.connect(recordLimiter);
+    recordLimiter.connect(recordDest);
+
+    // speakers output (unchanged)
     metroGain.connect(audioCtx.destination);
     playbackGain.connect(audioCtx.destination);
 
-    metroGain.connect(recordDest);
-    playbackGain.connect(recordDest);
+    // ✅ drums go to recording mix (not straight to recordDest)
+    drumRecGain = audioCtx.createGain();
+    drumRecGain.gain.value = 0.50;   // keep your loudness target
+    metroGain.connect(drumRecGain);
+    drumRecGain.connect(recordMix);
+
+    // ✅ playback can be included in recordings if you want
+    playbackGain.connect(recordMix);
   }
 }
 
@@ -1402,6 +1430,7 @@ let recChunks = [];
 let micStream = null;
 let micSource = null;
 let micGain = null;
+  let drumRecGain = null;
 
 async function ensureMic(){
   if(micStream) return;
@@ -1430,12 +1459,12 @@ async function ensureMic(){
   comp.release.value = 0.18;
 
   micGain = audioCtx.createGain();
-  micGain.gain.value = 0.55;
+  micGain.gain.value = 0.15;
 
   micSource.connect(hp);
   hp.connect(comp);
   comp.connect(micGain);
-  micGain.connect(recordDest);
+  micGain.connect(recordMix); // ✅ goes through limiter now
 }
 
 function pickBestMime(){
@@ -1472,7 +1501,7 @@ async function startRecording(){
   const mimeType = pickBestMime();
   const opts = {};
   if(mimeType) opts.mimeType = mimeType;
-  opts.audioBitsPerSecond = 64000;
+  opts.audioBitsPerSecond = 160000;
 
   recorder = new MediaRecorder(recordDest.stream, opts);
 
