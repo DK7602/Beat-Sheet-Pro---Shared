@@ -398,18 +398,9 @@ els.dockToggle?.addEventListener("click", ()=>{
 });
 
 /***********************
-✅ syllables (AUTO + MANUAL OVERRIDE)
-- Manual syllable split: use "/" INSIDE a word, e.g. ev/er/y (counts as 3 syllables)
-- Manual beat breaks: use "/" as separators between phrases, e.g. a b / c d / e f / g h
+✅ syllables
 ***********************/
 function normalizeWord(w){ return (w||"").toLowerCase().replace(/[^a-z']/g,""); }
-
-function isManualSyllWord(raw){
-  // only treat as manual syllable split if slash is INSIDE the word (no spaces),
-  // e.g. "ev/er/y" or "in/cred/i/ble"
-  return /^[A-Za-z']+(\/[A-Za-z']+)+$/.test(String(raw||"").trim());
-}
-
 const SYLL_DICT = {
   "im":1,"i'm":1,"ive":1,"i've":1,"ill":1,"i'll":1,"id":1,"i'd":1,
   "dont":1,"don't":1,"cant":1,"can't":1,"wont":1,"won't":1,"aint":1,"ain't":1,
@@ -417,20 +408,10 @@ const SYLL_DICT = {
   "wanna":2,"gonna":2,"tryna":2,"lemme":2,"gotta":2,"kinda":2,"outta":2,
   "toyota":3,"hiphop":2,"gfunk":2,"gangsta":2,"birthday":2
 };
-
 function countSyllablesWord(word){
   if(!word) return 0;
-
-  // ✅ manual syllable splits inside a word: ev/er/y => 3
-  if(isManualSyllWord(word)){
-    const parts = String(word).split("/").map(s=>s.trim()).filter(Boolean);
-    return Math.max(1, parts.length || 1);
-  }
-
-  // ✅ explicit override like: hello(3)
   const forced = String(word).match(/\((\d+)\)\s*$/);
   if(forced) return Math.max(1, parseInt(forced[1],10));
-
   let w = normalizeWord(word);
   if(!w) return 0;
   if(SYLL_DICT[w] != null) return SYLL_DICT[w];
@@ -449,87 +430,31 @@ function countSyllablesWord(word){
 
   return Math.max(1, count || 1);
 }
-
 function countSyllablesLine(line){
-  const s = String(line||"").trim();
-  if(!s) return 0;
-
-  // split by whitespace; ignore standalone beat slashes "/"
-  const tokens = s.split(/\s+/).filter(Boolean).filter(t => t !== "/");
-
-  return tokens.reduce((sum, tok)=>{
-    // If it’s "word/" or "/word" from beat-breaking, treat slash as not part of word
-    const cleaned = tok.replace(/^\/+|\/+$/g, "");
-    if(!cleaned) return sum;
-    return sum + countSyllablesWord(cleaned);
-  }, 0);
+  const clean = (line||"").replace(/[\/]/g," ").trim();
+  if(!clean) return 0;
+  return clean.split(/\s+/).filter(Boolean).reduce((sum,w)=>sum+countSyllablesWord(w),0);
 }
-
-/***********************
-✅ syll pill glow mapping (WHITE pill, glow by count)
-Red:    1–5  & 16+
-Yellow: 6–7  & 14–15
-Green:  8–13
-***********************/
 function syllGlowClass(n){
   if(!n) return "";
-  if(n <= 5) return "red";
-  if(n <= 7) return "yellow";
+  if(n <= 6) return "red";
+  if(n <= 9) return "yellow";
   if(n <= 13) return "green";
-  if(n <= 15) return "yellow";
-  return "red"; // 16+
+  if(n <= 16) return "yellow";
+  return "red";
 }
 
 /***********************
 ✅ beat splitting
-- Manual BEAT breaks: "/" as a separator between phrases (usually spaced): "a b / c d / e f / g h"
-- Manual SYLLABLE splits: "/" inside a word: "ev/er/y" (NOT a beat break)
 ***********************/
 function splitBySlashes(text){
-  const s = String(text||"");
-  const out = [];
-  let cur = "";
-
-  for(let i=0;i<s.length;i++){
-    const ch = s[i];
-    if(ch !== "/"){ cur += ch; continue; }
-
-    const prev = s[i-1] || "";
-    const next = s[i+1] || "";
-
-    const prevIsSpace = !prev || /\s/.test(prev);
-    const nextIsSpace = !next || /\s/.test(next);
-
-    // ✅ delimiter ONLY if slash is at edges OR has whitespace on at least one side
-    // (so "ev/er/y" stays intact, but "foo / bar" splits)
-    if(i === 0 || i === s.length-1 || prevIsSpace || nextIsSpace){
-      out.push(cur.trim());
-      cur = "";
-      continue;
-    }
-
-    // otherwise, it's inside a word (manual syll split)
-    cur += ch;
-  }
-  out.push(cur.trim());
-
-  // pad/trim to 4 beats
-  const parts = out.map(x=>x||"").slice(0,4);
-  while(parts.length < 4) parts.push("");
-  return parts;
+  const parts = (text||"").split("/").map(s=>s.trim());
+  return [parts[0]||"", parts[1]||"", parts[2]||"", parts[3]||""];
 }
-
 function splitWordIntoChunks(word){
   const raw = String(word);
-
-  // ✅ if user manually split syllables inside the word (ev/er/y) use those chunks
-  if(isManualSyllWord(raw)){
-    return raw.split("/").filter(Boolean);
-  }
-
   const cleaned = raw.replace(/[^A-Za-z']/g,"");
   if(!cleaned) return [raw];
-
   const groups = cleaned.match(/[aeiouy]+|[^aeiouy]+/gi) || [cleaned];
   const out = [];
   for(const g of groups){
@@ -538,14 +463,11 @@ function splitWordIntoChunks(word){
   }
   return out.length ? out : [raw];
 }
-
 function chunkSyllCount(chunk){
-  // If manual chunk came from ev/er/y, treat each chunk as 1 syllable minimum
   const w = String(chunk).toLowerCase().replace(/[^a-z']/g,"").replace(/'/g,"");
   const groups = w.match(/[aeiouy]+/g);
   return Math.max(1, (groups ? groups.length : 0) || 1);
 }
-
 function buildTargets(total){
   const base = Math.floor(total/4);
   const rem = total % 4;
@@ -557,18 +479,11 @@ function buildTargets(total){
   }
   return t;
 }
-
 function autoSplitSyllablesClean(text){
-  // IMPORTANT: DO NOT remove internal syll slashes like ev/er/y
-  // Remove only beat-break slashes that are separated by spaces or edges:
-  const s = String(text||"").trim();
-  if(!s) return ["","","",""];
-
-  // We will treat whitespace-delimiter slashes as separators later via computeBeats(),
-  // so auto split is only used when there are NO beat-break slashes.
-  const words = s.split(/\s+/).filter(Boolean).filter(t => t !== "/");
-
-  const sylls = words.map(w=>countSyllablesWord(w.replace(/^\/+|\/+$/g,"")));
+  const clean = (text||"").replace(/[\/]/g," ").trim();
+  if(!clean) return ["","","",""];
+  const words = clean.split(/\s+/).filter(Boolean);
+  const sylls = words.map(w=>countSyllablesWord(w));
   const total = sylls.reduce((a,b)=>a+b,0);
   if(!total) return ["","","",""];
 
@@ -580,18 +495,15 @@ function autoSplitSyllablesClean(text){
   function pushWord(beatIndex, w){ beats[beatIndex].push(w); }
 
   for(let i=0;i<words.length;i++){
-    const wRaw = words[i];
-    const w = wRaw.replace(/^\/+|\/+$/g,"");
-    if(!w) continue;
-
-    const sCount = countSyllablesWord(w);
+    const w = words[i];
+    const s = sylls[i];
 
     while(b < 3 && beatSyll[b] >= targets[b]) b++;
     const rem2 = targets[b] - beatSyll[b];
 
-    if(sCount <= rem2 || b === 3){
-      pushWord(b, w.replaceAll("/", "")); // show word without syll slashes
-      beatSyll[b] += sCount;
+    if(s <= rem2 || b === 3){
+      pushWord(b, w);
+      beatSyll[b] += s;
       continue;
     }
 
@@ -607,8 +519,8 @@ function autoSplitSyllablesClean(text){
       if(takeSyll >= rem2) break;
     }
     if(!take.length){
-      pushWord(b, w.replaceAll("/", ""));
-      beatSyll[b] += sCount;
+      pushWord(b, w);
+      beatSyll[b] += s;
       continue;
     }
 
@@ -618,41 +530,22 @@ function autoSplitSyllablesClean(text){
     pushWord(b, left);
     beatSyll[b] += takeSyll;
 
-    const remaining = Math.max(1, sCount - takeSyll);
     if(b < 3){
       b++;
       pushWord(b, right);
-      beatSyll[b] += remaining;
+      beatSyll[b] += Math.max(1, s - takeSyll);
     }else{
       pushWord(b, right);
-      beatSyll[b] += remaining;
+      beatSyll[b] += Math.max(1, s - takeSyll);
     }
   }
 
   return beats.map(arr=>arr.join(" ").trim());
 }
-
 function computeBeats(text){
-  const s = String(text||"");
-
-  // ✅ decide if there are "beat-break" slashes (whitespace/edge slashes)
-  let hasBeatBreak = false;
-  for(let i=0;i<s.length;i++){
-    if(s[i] !== "/") continue;
-    const prev = s[i-1] || "";
-    const next = s[i+1] || "";
-    const prevIsSpace = !prev || /\s/.test(prev);
-    const nextIsSpace = !next || /\s/.test(next);
-    if(i === 0 || i === s.length-1 || prevIsSpace || nextIsSpace){
-      hasBeatBreak = true;
-      break;
-    }
-  }
-
-  if(hasBeatBreak) return splitBySlashes(s);
-  return autoSplitSyllablesClean(s);
+  if((text||"").includes("/")) return splitBySlashes(text);
+  return autoSplitSyllablesClean(text);
 }
-
 
 /***********************
 ✅ rhymes
@@ -1645,13 +1538,51 @@ let micGain = null;
 async function ensureMic(){
   if(micStream) return;
 
+ // ✅ Ask for a "music-like" mic path (turn OFF call-processing)
+try{
   micStream = await navigator.mediaDevices.getUserMedia({
     audio: {
-      echoCancellation: true,
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+
+      // Helpful on some devices/browsers (ignored if unsupported)
+      channelCount: 1,
+      sampleRate: 48000,
+      sampleSize: 16,
+      latency: 0.02,
+
+      // Legacy Chrome flags (safe; ignored if unsupported)
+      googEchoCancellation: false,
+      googAutoGainControl: false,
+      googNoiseSuppression: false,
+      googHighpassFilter: false,
+      googTypingNoiseDetection: false
+    }
+  });
+  // ✅ after getUserMedia (after try/catch), force-disable call-processing if supported
+try{
+  const track = micStream?.getAudioTracks?.()[0];
+  if(track?.applyConstraints){
+    await track.applyConstraints({
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false
+    });
+  }
+}catch{}
+
+}catch(err){
+  // Fallback: still try to kill processing if possible
+  micStream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: false,
       noiseSuppression: false,
       autoGainControl: false
     }
   });
+}
+
 
   ensureAudio();
 
