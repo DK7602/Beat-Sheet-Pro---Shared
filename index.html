@@ -58,7 +58,7 @@
       margin:0;
       scroll-snap-type: x mandatory;
       scroll-behavior: auto;
-      touch-action: pan-x pan-y pinch-zoom;
+      touch-action: pan-y pinch-zoom;
     }
     .pager::-webkit-scrollbar{ display:none; }
 
@@ -67,7 +67,7 @@
       width:100%;
       max-width:100%;
       overflow-x:hidden;
-      padding:10px 0 26px;
+      padding:0 0 26px;
       scroll-snap-align: start;
       scroll-snap-stop: always;
     }
@@ -81,7 +81,53 @@
       margin:0 0 8px;
       padding:0 2px;
     }
+/* ✅ Page title row with + / × on right */
+.pageTitleRow{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:0 2px;
+  margin:0 0 8px;
+  position:sticky;
+  top:0;
+  z-index:6;
+  background: var(--bg);
+  padding-top:6px;
+  padding-bottom:6px;
+}
 
+.pageTitleRow .pageTitle{
+  margin:0;
+  padding:0;
+}
+
+.pageTitleBtns{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex:0 0 auto;
+}
+
+.pageTitleBtn{
+  width:34px;
+  height:34px;
+  padding:0;
+  border-radius:999px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:18px;
+  font-weight:1000;
+  line-height:1;
+  box-shadow:0 6px 14px rgba(0,0,0,.08);
+}
+
+.pageTitleBtn.del{
+  border-color: rgba(255, 43, 43, .55);
+  background: rgba(255, 43, 43, .10);
+  color:#7f1d1d;
+}
     body.headerCollapsed main{ padding:0 !important; }
     body.headerCollapsed #bars{ gap:0 !important; }
 
@@ -100,7 +146,7 @@
     }
 
     body.fullMode header{ max-height:16vh; }
-    body.fullMode .miniCard{ display:none; }
+    body.fullMode .miniCard{ display:flex; }
 
     body.headerCollapsed header{
       max-height:none;
@@ -647,8 +693,10 @@
     }
     .fullEditor{
       width:100%;
-      height:78vh;
+      /* ✅ Let the OUTER panel scroll (prevents “scroll twice” on mobile) */
+      height:auto;
       min-height:520px;
+
       resize:vertical;
       padding:12px;
       border-radius:16px;
@@ -658,7 +706,10 @@
       line-height:1.35;
       font-weight:900;
       outline:none;
+
       white-space:pre-wrap;
+      overflow:hidden;
+      touch-action: pan-y;
     }
 
     .audioItem{
@@ -878,7 +929,9 @@
         box.style.cssText =
           "position:fixed;left:10px;right:10px;top:10px;z-index:99999;" +
           "background:#111;color:#fff;padding:10px 12px;border-radius:12px;" +
-          "font:12px/1.35 system-ui,Segoe UI,Roboto,Arial;white-space:pre-wrap;" +
+          "font:12px/1.35 system-ui,Segoe UI,Roboto,Arial;white-space:pre-wrap;
+      overflow:auto;
+      -webkit-overflow-scrolling:touch;" +
           "max-height:40vh;overflow:auto;opacity:.95";
         document.body.appendChild(box);
       }
