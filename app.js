@@ -315,10 +315,6 @@ function setAutoScroll(v){
     }
     autoScrollMetroOffset16 = 0;
   }
-
-  if(p){
-    saveProject(p);
-  }
 }
 els.autoScrollBtn?.addEventListener("click", ()=> setAutoScroll(!autoScrollOn));
 
