@@ -236,14 +236,12 @@ body{height:100%;}
 
     .topRow{
       display:flex;
-      gap:8px;
+      gap:6px;
       flex-wrap:nowrap;
       align-items:center;
       margin-bottom:8px;
       min-width:0;
-      overflow-x:auto;
-      overflow-y:hidden;
-      -webkit-overflow-scrolling:touch;
+      overflow:hidden;
     }
     .topRow::-webkit-scrollbar{ display:none; }
 
@@ -1017,6 +1015,36 @@ body.autoScrollOn .fullSectionEditor{ display:none; }
       line-height:1;
       box-shadow:0 6px 14px rgba(0,0,0,.08);
       flex:0 0 auto;
+    }
+
+    #statusText{
+      flex:1 1 88px;
+      min-width:0;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+
+    @media (max-width: 900px){
+      .topRow{ gap:5px; }
+      .toolIconBtn, .mp3Btn{ width:36px; height:36px; font-size:16px; }
+      .headerToggleBtn.refreshBtn, #headerToggle2{ width:34px; height:34px; min-width:34px; padding:0 8px; }
+      .pill{ gap:6px; padding:6px 8px; }
+      .pill label{ font-size:9px; }
+      input[type="number"]{ width:46px; padding:6px 7px; }
+      #statusText{ flex-basis:72px; font-size:11px; }
+    }
+
+    @media (max-width: 640px){
+      .topRow{ gap:4px; }
+      .toolIconBtn, .mp3Btn{ width:34px; height:34px; font-size:15px; }
+      .headerToggleBtn{ font-size:11px; padding:6px 8px; }
+      .headerToggleBtn.refreshBtn{ width:32px; height:32px; min-width:32px; padding:0; }
+      #headerToggle2{ min-width:46px; padding:6px 8px; }
+      .pill{ padding:5px 7px; gap:5px; }
+      .pill label{ font-size:8px; letter-spacing:.4px; }
+      input[type="number"]{ width:42px; font-size:13px; padding:5px 6px; }
+      #statusText{ flex-basis:60px; font-size:10px; }
     }
 
     .notesOverlay{
