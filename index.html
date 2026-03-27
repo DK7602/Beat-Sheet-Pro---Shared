@@ -1176,6 +1176,66 @@ body.autoScrollOn .fullSectionEditor{ display:none; }
 
 
 #barsInner{width:100%;}
+
+    .cloudOverlay{
+      position:fixed;
+      inset:0;
+      z-index:165;
+      background:rgba(0,0,0,.34);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding:16px;
+    }
+    .cloudOverlay.open{ display:flex; }
+    .cloudCard{
+      width:min(100%, 420px);
+      background:#fff;
+      border:1px solid rgba(0,0,0,.12);
+      border-radius:22px;
+      box-shadow:0 18px 42px rgba(0,0,0,.16);
+      padding:14px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .cloudTop{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .cloudTitle{ font-size:18px; font-weight:1000; }
+    .cloudCloseBtn{
+      width:36px; height:36px; padding:0; border-radius:999px;
+      display:flex; align-items:center; justify-content:center;
+      font-size:18px; font-weight:1000; line-height:1;
+    }
+    .cloudStatus{
+      font-size:13px;
+      font-weight:1000;
+      color:#374151;
+      background:#f3f4f6;
+      border-radius:14px;
+      padding:10px 12px;
+    }
+    .cloudField{
+      width:100%;
+      padding:12px 14px;
+      border-radius:16px;
+      border:1px solid rgba(0,0,0,.16);
+      font-size:15px;
+      font-weight:900;
+      background:#fff;
+      box-shadow:0 6px 14px rgba(0,0,0,.05);
+    }
+    .cloudBtnRow{
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:8px;
+    }
+    .cloudBtnRow button{ min-height:44px; border-radius:16px; }
+    .cloudBtnRow.cloudBtnRowSingle{ grid-template-columns:1fr; }
 </style>
 </head>
 
@@ -1218,6 +1278,8 @@ body.autoScrollOn .fullSectionEditor{ display:none; }
 </button>
 
 <button id="headerToggle2" class="headerToggleBtn" type="button">Hide</button>
+
+      <button id="cloudBtn" class="toolIconBtn" type="button" aria-label="Cloud" title="Cloud">☁️</button>
 
       <div class="small" id="statusText" style="flex:1 1 auto; text-align:right;"></div>
     </div>
@@ -1263,6 +1325,27 @@ body.autoScrollOn .fullSectionEditor{ display:none; }
     <div id="bars"><div id="belowHeader"></div><div id="barsInner"></div></div>
   </main>
 
+  <div id="cloudOverlay" class="cloudOverlay" aria-hidden="true">
+    <div class="cloudCard" role="dialog" aria-modal="true" aria-label="Cloud">
+      <div class="cloudTop">
+        <div class="cloudTitle">Cloud</div>
+        <button id="cloudCloseBtn" class="cloudCloseBtn" type="button" aria-label="Close cloud">×</button>
+      </div>
+      <div id="cloudStatusText" class="cloudStatus">Signed out</div>
+      <input id="cloudEmail" class="cloudField" type="email" placeholder="Email" autocomplete="email" />
+      <input id="cloudPassword" class="cloudField" type="password" placeholder="Password" autocomplete="current-password" />
+      <input id="cloudNewPassword" class="cloudField" type="password" placeholder="New password" autocomplete="new-password" style="display:none;" />
+      <div class="cloudBtnRow">
+        <button id="cloudSignInBtn" type="button">Sign In</button>
+        <button id="cloudSignUpBtn" type="button">Sign Up</button>
+        <button id="cloudResetBtn" type="button">Reset Password</button>
+        <button id="cloudSyncBtn" type="button">Sync Now</button>
+        <button id="cloudSignOutBtn" type="button" style="display:none;">Sign Out</button>
+        <button id="cloudUpdatePasswordBtn" type="button" style="display:none;">Update Password</button>
+      </div>
+    </div>
+  </div>
+
   <div id="notesOverlay" class="notesOverlay" aria-hidden="true">
     <div class="notesShell">
       <div class="notesToolbar">
@@ -1307,6 +1390,8 @@ body.autoScrollOn .fullSectionEditor{ display:none; }
   </div>
 
   <div class="toast" id="toast">Saved</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <script>
   (function(){
